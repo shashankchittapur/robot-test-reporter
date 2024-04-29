@@ -23,7 +23,6 @@ inputs:
     description: 'The pull request number'
     required: false
     default: ${{ github.event.pull_request.number }}
-  
 
 # Define your outputs here.
 outputs:
