@@ -57,8 +57,5 @@ jobs:
         id: test-action
         uses: ./
         with:
-          milliseconds: 2000
-
-      - name: Print Output
-        id: output
-        run: echo "${{ steps.test-action.outputs.time }}"
+          gh_access_token: ${{ secrets.GITHUB_TOKEN }}
+          report_path: ${{ github.workspace }}/__tests__/resources

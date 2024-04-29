@@ -1834,6 +1834,325 @@ function isLoopbackAddress(host) {
 
 /***/ }),
 
+/***/ 1848:
+/***/ ((module) => {
+
+"use strict";
+
+
+var has = Object.prototype.hasOwnProperty
+  , prefix = '~';
+
+/**
+ * Constructor to create a storage for our `EE` objects.
+ * An `Events` instance is a plain object whose properties are event names.
+ *
+ * @constructor
+ * @api private
+ */
+function Events() {}
+
+//
+// We try to not inherit from `Object.prototype`. In some engines creating an
+// instance in this way is faster than calling `Object.create(null)` directly.
+// If `Object.create(null)` is not supported we prefix the event names with a
+// character to make sure that the built-in object properties are not
+// overridden or used as an attack vector.
+//
+if (Object.create) {
+  Events.prototype = Object.create(null);
+
+  //
+  // This hack is needed because the `__proto__` property is still inherited in
+  // some old browsers like Android 4, iPhone 5.1, Opera 11 and Safari 5.
+  //
+  if (!new Events().__proto__) prefix = false;
+}
+
+/**
+ * Representation of a single event listener.
+ *
+ * @param {Function} fn The listener function.
+ * @param {Mixed} context The context to invoke the listener with.
+ * @param {Boolean} [once=false] Specify if the listener is a one-time listener.
+ * @constructor
+ * @api private
+ */
+function EE(fn, context, once) {
+  this.fn = fn;
+  this.context = context;
+  this.once = once || false;
+}
+
+/**
+ * Minimal `EventEmitter` interface that is molded against the Node.js
+ * `EventEmitter` interface.
+ *
+ * @constructor
+ * @api public
+ */
+function EventEmitter() {
+  this._events = new Events();
+  this._eventsCount = 0;
+}
+
+/**
+ * Return an array listing the events for which the emitter has registered
+ * listeners.
+ *
+ * @returns {Array}
+ * @api public
+ */
+EventEmitter.prototype.eventNames = function eventNames() {
+  var names = []
+    , events
+    , name;
+
+  if (this._eventsCount === 0) return names;
+
+  for (name in (events = this._events)) {
+    if (has.call(events, name)) names.push(prefix ? name.slice(1) : name);
+  }
+
+  if (Object.getOwnPropertySymbols) {
+    return names.concat(Object.getOwnPropertySymbols(events));
+  }
+
+  return names;
+};
+
+/**
+ * Return the listeners registered for a given event.
+ *
+ * @param {String|Symbol} event The event name.
+ * @param {Boolean} exists Only check if there are listeners.
+ * @returns {Array|Boolean}
+ * @api public
+ */
+EventEmitter.prototype.listeners = function listeners(event, exists) {
+  var evt = prefix ? prefix + event : event
+    , available = this._events[evt];
+
+  if (exists) return !!available;
+  if (!available) return [];
+  if (available.fn) return [available.fn];
+
+  for (var i = 0, l = available.length, ee = new Array(l); i < l; i++) {
+    ee[i] = available[i].fn;
+  }
+
+  return ee;
+};
+
+/**
+ * Calls each of the listeners registered for a given event.
+ *
+ * @param {String|Symbol} event The event name.
+ * @returns {Boolean} `true` if the event had listeners, else `false`.
+ * @api public
+ */
+EventEmitter.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
+  var evt = prefix ? prefix + event : event;
+
+  if (!this._events[evt]) return false;
+
+  var listeners = this._events[evt]
+    , len = arguments.length
+    , args
+    , i;
+
+  if (listeners.fn) {
+    if (listeners.once) this.removeListener(event, listeners.fn, undefined, true);
+
+    switch (len) {
+      case 1: return listeners.fn.call(listeners.context), true;
+      case 2: return listeners.fn.call(listeners.context, a1), true;
+      case 3: return listeners.fn.call(listeners.context, a1, a2), true;
+      case 4: return listeners.fn.call(listeners.context, a1, a2, a3), true;
+      case 5: return listeners.fn.call(listeners.context, a1, a2, a3, a4), true;
+      case 6: return listeners.fn.call(listeners.context, a1, a2, a3, a4, a5), true;
+    }
+
+    for (i = 1, args = new Array(len -1); i < len; i++) {
+      args[i - 1] = arguments[i];
+    }
+
+    listeners.fn.apply(listeners.context, args);
+  } else {
+    var length = listeners.length
+      , j;
+
+    for (i = 0; i < length; i++) {
+      if (listeners[i].once) this.removeListener(event, listeners[i].fn, undefined, true);
+
+      switch (len) {
+        case 1: listeners[i].fn.call(listeners[i].context); break;
+        case 2: listeners[i].fn.call(listeners[i].context, a1); break;
+        case 3: listeners[i].fn.call(listeners[i].context, a1, a2); break;
+        case 4: listeners[i].fn.call(listeners[i].context, a1, a2, a3); break;
+        default:
+          if (!args) for (j = 1, args = new Array(len -1); j < len; j++) {
+            args[j - 1] = arguments[j];
+          }
+
+          listeners[i].fn.apply(listeners[i].context, args);
+      }
+    }
+  }
+
+  return true;
+};
+
+/**
+ * Add a listener for a given event.
+ *
+ * @param {String|Symbol} event The event name.
+ * @param {Function} fn The listener function.
+ * @param {Mixed} [context=this] The context to invoke the listener with.
+ * @returns {EventEmitter} `this`.
+ * @api public
+ */
+EventEmitter.prototype.on = function on(event, fn, context) {
+  var listener = new EE(fn, context || this)
+    , evt = prefix ? prefix + event : event;
+
+  if (!this._events[evt]) this._events[evt] = listener, this._eventsCount++;
+  else if (!this._events[evt].fn) this._events[evt].push(listener);
+  else this._events[evt] = [this._events[evt], listener];
+
+  return this;
+};
+
+/**
+ * Add a one-time listener for a given event.
+ *
+ * @param {String|Symbol} event The event name.
+ * @param {Function} fn The listener function.
+ * @param {Mixed} [context=this] The context to invoke the listener with.
+ * @returns {EventEmitter} `this`.
+ * @api public
+ */
+EventEmitter.prototype.once = function once(event, fn, context) {
+  var listener = new EE(fn, context || this, true)
+    , evt = prefix ? prefix + event : event;
+
+  if (!this._events[evt]) this._events[evt] = listener, this._eventsCount++;
+  else if (!this._events[evt].fn) this._events[evt].push(listener);
+  else this._events[evt] = [this._events[evt], listener];
+
+  return this;
+};
+
+/**
+ * Remove the listeners of a given event.
+ *
+ * @param {String|Symbol} event The event name.
+ * @param {Function} fn Only remove the listeners that match this function.
+ * @param {Mixed} context Only remove the listeners that have this context.
+ * @param {Boolean} once Only remove one-time listeners.
+ * @returns {EventEmitter} `this`.
+ * @api public
+ */
+EventEmitter.prototype.removeListener = function removeListener(event, fn, context, once) {
+  var evt = prefix ? prefix + event : event;
+
+  if (!this._events[evt]) return this;
+  if (!fn) {
+    if (--this._eventsCount === 0) this._events = new Events();
+    else delete this._events[evt];
+    return this;
+  }
+
+  var listeners = this._events[evt];
+
+  if (listeners.fn) {
+    if (
+         listeners.fn === fn
+      && (!once || listeners.once)
+      && (!context || listeners.context === context)
+    ) {
+      if (--this._eventsCount === 0) this._events = new Events();
+      else delete this._events[evt];
+    }
+  } else {
+    for (var i = 0, events = [], length = listeners.length; i < length; i++) {
+      if (
+           listeners[i].fn !== fn
+        || (once && !listeners[i].once)
+        || (context && listeners[i].context !== context)
+      ) {
+        events.push(listeners[i]);
+      }
+    }
+
+    //
+    // Reset the array, or remove it completely if we have no more listeners.
+    //
+    if (events.length) this._events[evt] = events.length === 1 ? events[0] : events;
+    else if (--this._eventsCount === 0) this._events = new Events();
+    else delete this._events[evt];
+  }
+
+  return this;
+};
+
+/**
+ * Remove all listeners, or those of the specified event.
+ *
+ * @param {String|Symbol} [event] The event name.
+ * @returns {EventEmitter} `this`.
+ * @api public
+ */
+EventEmitter.prototype.removeAllListeners = function removeAllListeners(event) {
+  var evt;
+
+  if (event) {
+    evt = prefix ? prefix + event : event;
+    if (this._events[evt]) {
+      if (--this._eventsCount === 0) this._events = new Events();
+      else delete this._events[evt];
+    }
+  } else {
+    this._events = new Events();
+    this._eventsCount = 0;
+  }
+
+  return this;
+};
+
+//
+// Alias methods names because people roll like that.
+//
+EventEmitter.prototype.off = EventEmitter.prototype.removeListener;
+EventEmitter.prototype.addListener = EventEmitter.prototype.on;
+
+//
+// This function doesn't apply anymore.
+//
+EventEmitter.prototype.setMaxListeners = function setMaxListeners() {
+  return this;
+};
+
+//
+// Expose the prefix.
+//
+EventEmitter.prefixed = prefix;
+
+//
+// Allow `EventEmitter` to be imported as module namespace.
+//
+EventEmitter.EventEmitter = EventEmitter;
+
+//
+// Expose the module.
+//
+if (true) {
+  module.exports = EventEmitter;
+}
+
+
+/***/ }),
+
 /***/ 4294:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -24920,7 +25239,406 @@ exports["default"] = _default;
 
 /***/ }),
 
-/***/ 399:
+/***/ 43:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
+var EventEmitter = __nccwpck_require__(1848);
+var noop = function noop() {};
+
+var State = {
+    data: 'state-data',
+    cdata: 'state-cdata',
+    tagBegin: 'state-tag-begin',
+    tagName: 'state-tag-name',
+    tagEnd: 'state-tag-end',
+    attributeNameStart: 'state-attribute-name-start',
+    attributeName: 'state-attribute-name',
+    attributeNameEnd: 'state-attribute-name-end',
+    attributeValueBegin: 'state-attribute-value-begin',
+    attributeValue: 'state-attribute-value'
+};
+
+var Action = {
+    lt: 'action-lt',
+    gt: 'action-gt',
+    space: 'action-space',
+    equal: 'action-equal',
+    quote: 'action-quote',
+    slash: 'action-slash',
+    char: 'action-char',
+    error: 'action-error'
+};
+
+var Type = {
+    text: 'text',
+    openTag: 'open-tag',
+    closeTag: 'close-tag',
+    attributeName: 'attribute-name',
+    attributeValue: 'attribute-value'
+};
+
+var charToAction = {
+    ' ': Action.space,
+    '\t': Action.space,
+    '\n': Action.space,
+    '\r': Action.space,
+    '<': Action.lt,
+    '>': Action.gt,
+    '"': Action.quote,
+    "'": Action.quote,
+    '=': Action.equal,
+    '/': Action.slash
+};
+
+var getAction = function getAction(char) {
+    return charToAction[char] || Action.char;
+};
+
+/**
+ * @param  {Object} options
+ * @param  {Boolean} options.debug
+ * @return {Object}
+ */
+var create = function create(options) {
+    var _State$data, _State$tagBegin, _State$tagName, _State$tagEnd, _State$attributeNameS, _State$attributeName, _State$attributeNameE, _State$attributeValue, _State$attributeValue2, _lexer$stateMachine;
+
+    options = Object.assign({ debug: false }, options);
+    var lexer = new EventEmitter();
+    var state = State.data;
+    var data = '';
+    var tagName = '';
+    var attrName = '';
+    var attrValue = '';
+    var isClosing = '';
+    var openingQuote = '';
+
+    var emit = function emit(type, value) {
+        // for now, ignore tags like: '?xml', '!DOCTYPE' or comments
+        if (tagName[0] === '?' || tagName[0] === '!') {
+            return;
+        }
+        var event = { type: type, value: value };
+        if (options.debug) {
+            console.log('emit:', event);
+        }
+        lexer.emit('data', event);
+    };
+
+    lexer.stateMachine = (_lexer$stateMachine = {}, _defineProperty(_lexer$stateMachine, State.data, (_State$data = {}, _defineProperty(_State$data, Action.lt, function () {
+        if (data.trim()) {
+            emit(Type.text, data);
+        }
+        tagName = '';
+        isClosing = false;
+        state = State.tagBegin;
+    }), _defineProperty(_State$data, Action.char, function (char) {
+        data += char;
+    }), _State$data)), _defineProperty(_lexer$stateMachine, State.cdata, _defineProperty({}, Action.char, function (char) {
+        data += char;
+        if (data.substr(-3) === ']]>') {
+            emit(Type.text, data.slice(0, -3));
+            data = '';
+            state = State.data;
+        }
+    })), _defineProperty(_lexer$stateMachine, State.tagBegin, (_State$tagBegin = {}, _defineProperty(_State$tagBegin, Action.space, noop), _defineProperty(_State$tagBegin, Action.char, function (char) {
+        tagName = char;
+        state = State.tagName;
+    }), _defineProperty(_State$tagBegin, Action.slash, function () {
+        tagName = '';
+        isClosing = true;
+    }), _State$tagBegin)), _defineProperty(_lexer$stateMachine, State.tagName, (_State$tagName = {}, _defineProperty(_State$tagName, Action.space, function () {
+        if (isClosing) {
+            state = State.tagEnd;
+        } else {
+            state = State.attributeNameStart;
+            emit(Type.openTag, tagName);
+        }
+    }), _defineProperty(_State$tagName, Action.gt, function () {
+        if (isClosing) {
+            emit(Type.closeTag, tagName);
+        } else {
+            emit(Type.openTag, tagName);
+        }
+        data = '';
+        state = State.data;
+    }), _defineProperty(_State$tagName, Action.slash, function () {
+        state = State.tagEnd;
+        emit(Type.openTag, tagName);
+    }), _defineProperty(_State$tagName, Action.char, function (char) {
+        tagName += char;
+        if (tagName === '![CDATA[') {
+            state = State.cdata;
+            data = '';
+            tagName = '';
+        }
+    }), _State$tagName)), _defineProperty(_lexer$stateMachine, State.tagEnd, (_State$tagEnd = {}, _defineProperty(_State$tagEnd, Action.gt, function () {
+        emit(Type.closeTag, tagName);
+        data = '';
+        state = State.data;
+    }), _defineProperty(_State$tagEnd, Action.char, noop), _State$tagEnd)), _defineProperty(_lexer$stateMachine, State.attributeNameStart, (_State$attributeNameS = {}, _defineProperty(_State$attributeNameS, Action.char, function (char) {
+        attrName = char;
+        state = State.attributeName;
+    }), _defineProperty(_State$attributeNameS, Action.gt, function () {
+        data = '';
+        state = State.data;
+    }), _defineProperty(_State$attributeNameS, Action.space, noop), _defineProperty(_State$attributeNameS, Action.slash, function () {
+        isClosing = true;
+        state = State.tagEnd;
+    }), _State$attributeNameS)), _defineProperty(_lexer$stateMachine, State.attributeName, (_State$attributeName = {}, _defineProperty(_State$attributeName, Action.space, function () {
+        state = State.attributeNameEnd;
+    }), _defineProperty(_State$attributeName, Action.equal, function () {
+        emit(Type.attributeName, attrName);
+        state = State.attributeValueBegin;
+    }), _defineProperty(_State$attributeName, Action.gt, function () {
+        attrValue = '';
+        emit(Type.attributeName, attrName);
+        emit(Type.attributeValue, attrValue);
+        data = '';
+        state = State.data;
+    }), _defineProperty(_State$attributeName, Action.slash, function () {
+        isClosing = true;
+        attrValue = '';
+        emit(Type.attributeName, attrName);
+        emit(Type.attributeValue, attrValue);
+        state = State.tagEnd;
+    }), _defineProperty(_State$attributeName, Action.char, function (char) {
+        attrName += char;
+    }), _State$attributeName)), _defineProperty(_lexer$stateMachine, State.attributeNameEnd, (_State$attributeNameE = {}, _defineProperty(_State$attributeNameE, Action.space, noop), _defineProperty(_State$attributeNameE, Action.equal, function () {
+        emit(Type.attributeName, attrName);
+        state = State.attributeValueBegin;
+    }), _defineProperty(_State$attributeNameE, Action.gt, function () {
+        attrValue = '';
+        emit(Type.attributeName, attrName);
+        emit(Type.attributeValue, attrValue);
+        data = '';
+        state = State.data;
+    }), _defineProperty(_State$attributeNameE, Action.char, function (char) {
+        attrValue = '';
+        emit(Type.attributeName, attrName);
+        emit(Type.attributeValue, attrValue);
+        attrName = char;
+        state = State.attributeName;
+    }), _State$attributeNameE)), _defineProperty(_lexer$stateMachine, State.attributeValueBegin, (_State$attributeValue = {}, _defineProperty(_State$attributeValue, Action.space, noop), _defineProperty(_State$attributeValue, Action.quote, function (char) {
+        openingQuote = char;
+        attrValue = '';
+        state = State.attributeValue;
+    }), _defineProperty(_State$attributeValue, Action.gt, function () {
+        attrValue = '';
+        emit(Type.attributeValue, attrValue);
+        data = '';
+        state = State.data;
+    }), _defineProperty(_State$attributeValue, Action.char, function (char) {
+        openingQuote = '';
+        attrValue = char;
+        state = State.attributeValue;
+    }), _State$attributeValue)), _defineProperty(_lexer$stateMachine, State.attributeValue, (_State$attributeValue2 = {}, _defineProperty(_State$attributeValue2, Action.space, function (char) {
+        if (openingQuote) {
+            attrValue += char;
+        } else {
+            emit(Type.attributeValue, attrValue);
+            state = State.attributeNameStart;
+        }
+    }), _defineProperty(_State$attributeValue2, Action.quote, function (char) {
+        if (openingQuote === char) {
+            emit(Type.attributeValue, attrValue);
+            state = State.attributeNameStart;
+        } else {
+            attrValue += char;
+        }
+    }), _defineProperty(_State$attributeValue2, Action.gt, function (char) {
+        if (openingQuote) {
+            attrValue += char;
+        } else {
+            emit(Type.attributeValue, attrValue);
+            data = '';
+            state = State.data;
+        }
+    }), _defineProperty(_State$attributeValue2, Action.slash, function (char) {
+        if (openingQuote) {
+            attrValue += char;
+        } else {
+            emit(Type.attributeValue, attrValue);
+            isClosing = true;
+            state = State.tagEnd;
+        }
+    }), _defineProperty(_State$attributeValue2, Action.char, function (char) {
+        attrValue += char;
+    }), _State$attributeValue2)), _lexer$stateMachine);
+
+    var step = function step(char) {
+        if (options.debug) {
+            console.log(state, char);
+        }
+        var actions = lexer.stateMachine[state];
+        var action = actions[getAction(char)] || actions[Action.error] || actions[Action.char];
+        action(char);
+    };
+
+    lexer.write = function (str) {
+        var len = str.length;
+        for (var i = 0; i < len; i++) {
+            step(str[i]);
+        }
+    };
+
+    return lexer;
+};
+
+module.exports = {
+    State: State,
+    Action: Action,
+    Type: Type,
+    create: create
+};
+
+/***/ }),
+
+/***/ 7657:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var EventEmitter = __nccwpck_require__(1848);
+var Lexer = __nccwpck_require__(43);
+var Type = Lexer.Type;
+
+var NodeType = {
+    element: 'element',
+    text: 'text'
+};
+
+var createNode = function createNode(params) {
+    return Object.assign({
+        name: '',
+        type: NodeType.element,
+        value: '',
+        parent: null,
+        attributes: {},
+        children: []
+    }, params);
+};
+
+var create = function create(options) {
+    options = Object.assign({
+        stream: false,
+        parentNodes: true,
+        doneEvent: 'done',
+        tagPrefix: 'tag:',
+        emitTopLevelOnly: false,
+        debug: false
+    }, options);
+
+    var lexer = void 0,
+        rootNode = void 0,
+        current = void 0,
+        attrName = void 0;
+
+    var reader = new EventEmitter();
+
+    var handleLexerData = function handleLexerData(data) {
+        switch (data.type) {
+
+            case Type.openTag:
+                if (current === null) {
+                    current = rootNode;
+                    current.name = data.value;
+                } else {
+                    var node = createNode({
+                        name: data.value,
+                        parent: current
+                    });
+                    current.children.push(node);
+                    current = node;
+                }
+                break;
+
+            case Type.closeTag:
+                var parent = current.parent;
+                if (!options.parentNodes) {
+                    current.parent = null;
+                }
+                if (current.name !== data.value) {
+                    // ignore unexpected closing tag
+                    break;
+                }
+                if (options.stream && parent === rootNode) {
+                    rootNode.children = [];
+                    // do not expose parent node in top level nodes
+                    current.parent = null;
+                }
+                if (!options.emitTopLevelOnly || parent === rootNode) {
+                    reader.emit(options.tagPrefix + current.name, current);
+                    reader.emit('tag', current.name, current);
+                }
+                if (current === rootNode) {
+                    // end of document, stop listening
+                    lexer.removeAllListeners('data');
+                    reader.emit(options.doneEvent, current);
+                    rootNode = null;
+                }
+                current = parent;
+                break;
+
+            case Type.text:
+                if (current) {
+                    current.children.push(createNode({
+                        type: NodeType.text,
+                        value: data.value,
+                        parent: options.parentNodes ? current : null
+                    }));
+                }
+                break;
+
+            case Type.attributeName:
+                attrName = data.value;
+                current.attributes[attrName] = '';
+                break;
+
+            case Type.attributeValue:
+                current.attributes[attrName] = data.value;
+                break;
+        }
+    };
+
+    reader.reset = function () {
+        lexer = Lexer.create({ debug: options.debug });
+        lexer.on('data', handleLexerData);
+        rootNode = createNode();
+        current = null;
+        attrName = '';
+        reader.parse = lexer.write;
+    };
+
+    reader.reset();
+    return reader;
+};
+
+var parseSync = function parseSync(xml, options) {
+    options = Object.assign({}, options, { stream: false, tagPrefix: ':' });
+    var reader = create(options);
+    var res = void 0;
+    reader.on('done', function (ast) {
+        res = ast;
+    });
+    reader.parse(xml);
+    return res;
+};
+
+module.exports = {
+    parseSync: parseSync,
+    create: create,
+    NodeType: NodeType
+};
+
+/***/ }),
+
+/***/ 8555:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -24949,24 +25667,251 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+const core = __importStar(__nccwpck_require__(2186));
+const XmlReader = __nccwpck_require__(7657);
+async function generateSummary(reportPath) {
+    try {
+        core.debug('Generating Robot report started');
+        const fs = __nccwpck_require__(7147);
+        const path = __nccwpck_require__(1017);
+        const outputFile = path.join(reportPath, 'output.xml');
+        if (!fs.existsSync(outputFile)) {
+            throw new Error(`output.xml file not found in the report path ${reportPath}`);
+        }
+        const outputFileDate = fs.readFileSync(outputFile, 'utf8');
+        const xmlReader = XmlReader.create({ stream: true });
+        const failedTests = [];
+        const passedTests = [];
+        let totalExecutionTime = 0;
+        xmlReader.on('tag:test', (test) => {
+            const statusNode = test.children.find((child) => child.name === 'status');
+            const statusAttributes = statusNode.attributes;
+            const endDateTime = convertToDate(statusAttributes.endtime);
+            const endTime = endDateTime.getTime();
+            const startDateTime = convertToDate(statusAttributes.starttime);
+            const startTime = startDateTime.getTime();
+            const testExecutionTime = (endTime - startTime) / 1000;
+            const testName = test.attributes.name;
+            const message = statusNode.children
+                .filter((child) => child.type === 'text')
+                .map((child) => child.value)
+                .join('');
+            const testStatus = statusAttributes.status;
+            const suiteName = test.parent.attributes.name;
+            if (testStatus === 'PASS') {
+                passedTests.push({
+                    name: testName,
+                    status: testStatus,
+                    execution_time: testExecutionTime,
+                    message: message,
+                    suite: suiteName
+                });
+            }
+            else if (testStatus === 'FAIL') {
+                failedTests.push({
+                    name: testName,
+                    status: testStatus,
+                    execution_time: testExecutionTime,
+                    message: message,
+                    suite: suiteName
+                });
+            }
+            totalExecutionTime += testExecutionTime;
+        });
+        let totalPass = 0;
+        let totalFail = 0;
+        let totalSkip = 0;
+        xmlReader.on('tag:statistics', (statistics) => {
+            const stat = statistics.children
+                .find((child) => child.name === 'total')
+                .children.find((child) => child.name === 'stat');
+            totalPass = parseInt(stat.attributes.pass);
+            totalFail = parseInt(stat.attributes.fail);
+            totalSkip = parseInt(stat.attributes.skip);
+        });
+        xmlReader.parse(outputFileDate);
+        const statistics = {
+            pass: totalPass,
+            fail: totalFail,
+            skip: totalSkip
+        };
+        const total = statistics.pass + statistics.fail;
+        const passPercentage = parseFloat(getPassPercentage(statistics.pass, statistics.fail));
+        return {
+            failedTests: failedTests,
+            passedTests: passedTests,
+            statistics: statistics,
+            total: total,
+            passPercentage: passPercentage,
+            totalExecutionTime: totalExecutionTime
+        };
+    }
+    catch (error) {
+        // Fail the workflow run if an error occurs
+        if (error instanceof Error)
+            core.setFailed(error.message);
+        return {
+            failedTests: [],
+            passedTests: [],
+            statistics: {
+                pass: 0,
+                fail: 0,
+                skip: 0
+            },
+            total: 0,
+            passPercentage: 0,
+            totalExecutionTime: 0
+        };
+    }
+}
+exports["default"] = generateSummary;
+function getPassPercentage(pass, fail) {
+    if (pass !== 0 && fail === 0)
+        return (100).toFixed(2);
+    else if (pass !== 0 && fail !== 0)
+        // return percentage with 2 decimal places
+        return ((pass / (pass + fail)) * 100).toFixed(2);
+    return ((pass / (pass + fail)) * 100).toFixed(2);
+}
+function convertToDate(dateTime) {
+    const splitDateTime = dateTime.split(' ');
+    const justDate = splitDateTime[0];
+    const year = justDate.substring(0, 4);
+    const month = justDate.substring(4, 6);
+    const day = justDate.substring(6, 8);
+    const time = splitDateTime[1];
+    const dateWithISOFormat = `${year}-${month}-${day}T${time}`;
+    return new Date(dateWithISOFormat);
+}
+
+
+/***/ }),
+
+/***/ 399:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.run = void 0;
 const core = __importStar(__nccwpck_require__(2186));
-const wait_1 = __nccwpck_require__(5259);
+const generate_summary_1 = __importDefault(__nccwpck_require__(8555));
 /**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
  */
 async function run() {
     try {
-        const ms = core.getInput('milliseconds');
-        // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-        core.debug(`Waiting ${ms} milliseconds ...`);
-        // Log the current timestamp, wait, then log the new timestamp
-        core.debug(new Date().toTimeString());
-        await (0, wait_1.wait)(parseInt(ms, 10));
-        core.debug(new Date().toTimeString());
-        // Set outputs for other workflow steps to use
-        core.setOutput('time', new Date().toTimeString());
+        core.debug('Generating Robot report started');
+        const inputs = {
+            token: core.getInput('gh_access_token'),
+            report_path: core.getInput('report_path'),
+            sha: core.getInput('sha'),
+            pull_request_id: core.getInput('pull_request_id')
+        };
+        if (!inputs.report_path) {
+            core.setFailed('report_path is required');
+            return;
+        }
+        if (!inputs.sha) {
+            core.setFailed('sha is required');
+            return;
+        }
+        const owner = process.env.GITHUB_REPOSITORY?.split('/')[0];
+        core.debug(`owner: ${owner}`);
+        const summary = await (0, generate_summary_1.default)(inputs.report_path);
+        await core.summary
+            .addHeading('Robot Framework Test Report')
+            .addBreak()
+            .addHeading('Robot Results Summary')
+            .addTable([
+            [
+                { data: 'Passed ✅', header: true },
+                { data: 'Failed ❌', header: true },
+                { data: 'Skipped :rocket: ', header: true },
+                { data: 'Total', header: true },
+                { data: 'Pass%', header: true }
+            ],
+            [
+                String(summary.statistics.pass),
+                String(summary.statistics.fail),
+                String(summary.statistics.skip),
+                String(summary.statistics.pass +
+                    summary.statistics.fail +
+                    summary.statistics.skip),
+                ((summary.statistics.pass /
+                    (summary.statistics.pass +
+                        summary.statistics.fail +
+                        summary.statistics.skip)) *
+                    100).toFixed(2)
+            ]
+        ])
+            .addBreak()
+            .addHeading('Failed Tests')
+            .addTable([
+            [
+                { data: 'Test Name', header: true },
+                { data: 'Execution Time :clock:', header: true },
+                { data: 'Message', header: true }
+            ],
+            ...summary.failedTests.map(test => [
+                test.name,
+                `${test.execution_time.toFixed(2)} s`,
+                test.message
+            ])
+        ])
+            .write();
+        // Comment on the PR with the summary as a comment
+        if (inputs.pull_request_id && inputs.token) {
+            const octokit = __nccwpck_require__(7043)({
+                auth: inputs.token
+            });
+            const summaryStatistics = summary.statistics;
+            const summaryFailedTests = summary.failedTests;
+            const comment = 'Robot Framework Test Report\n\n' +
+                'Robot Results Summary\n\n' +
+                '| Passed | Failed | Skipped | Total | Pass% |\n' +
+                '| --- | --- | --- | --- | --- |\n' +
+                `| ${summaryStatistics.pass} | ${summaryStatistics.fail} | ${summaryStatistics.skip} | ${summaryStatistics.pass + summaryStatistics.fail + summaryStatistics.skip} | ${((summaryStatistics.pass / (summaryStatistics.pass + summaryStatistics.fail + summaryStatistics.skip)) * 100).toFixed(2)} |\n\n` +
+                'Failed Tests\n\n' +
+                '| Test Name | Execution Time | Message |\n' +
+                '| --- | --- | --- |\n' +
+                summaryFailedTests
+                    .map(test => `| ${test.name} | ${test.execution_time} | ${test.message} |\n`)
+                    .join('\n');
+            await octokit.issues.createComment({
+                owner,
+                repo: process.env.GITHUB_REPOSITORY?.split('/')[1],
+                issue_number: parseInt(inputs.pull_request_id),
+                body: comment
+            });
+        }
     }
     catch (error) {
         // Fail the workflow run if an error occurs
@@ -24979,27 +25924,10 @@ exports.run = run;
 
 /***/ }),
 
-/***/ 5259:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 7043:
+/***/ ((module) => {
 
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.wait = void 0;
-/**
- * Wait for a number of milliseconds.
- * @param milliseconds The number of milliseconds to wait.
- * @returns {Promise<string>} Resolves with 'done!' after the wait is over.
- */
-async function wait(milliseconds) {
-    return new Promise(resolve => {
-        if (isNaN(milliseconds)) {
-            throw new Error('milliseconds not a number');
-        }
-        setTimeout(() => resolve('done!'), milliseconds);
-    });
-}
-exports.wait = wait;
+module.exports = eval("require")("@octokit/rest");
 
 
 /***/ }),
