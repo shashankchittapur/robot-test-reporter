@@ -21,14 +21,13 @@ export default async function generateSummary(
     const path = require('path')
     const outputFile = path.join(reportPath, 'output.xml')
     if (!fs.existsSync(outputFile)) {
-      throw new Error('output.xml file not found in the report path')
+      throw new Error(
+        `output.xml file not found in the report path ${reportPath}`
+      )
     }
-    console.log('Reading output.xml file started')
+
     const outputFileDate = fs.readFileSync(outputFile, 'utf8')
-    console.log('Reading output.xml file completed')
-
     const xmlReader = XmlReader.create({ stream: true })
-
     const failedTests: Test[] = []
     const passedTests: Test[] = []
     let totalExecutionTime = 0
