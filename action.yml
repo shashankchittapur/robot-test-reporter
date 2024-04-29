@@ -1,6 +1,6 @@
-name: 'The name of your action here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: 'Robot Reporter Action'
+description: 'Parses Robot output and reports the results to GitHub Actions'
+author: 'Shashank Chittapur'
 
 # Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
@@ -9,10 +9,21 @@ branding:
 
 # Define your inputs here.
 inputs:
-  milliseconds:
-    description: 'Your input description here'
+  gh_access_token:
+    description: 'Your GitHub token'
     required: true
-    default: '1000'
+  report_path:
+    description: 'Path to the Robot report file'
+    required: true
+  sha:
+    description: 'The commit SHA'
+    required: true
+    default: ${{ github.sha }}
+  pull_request_id:
+    description: 'The pull request number'
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  
 
 # Define your outputs here.
 outputs:
