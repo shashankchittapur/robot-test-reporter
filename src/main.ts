@@ -1,4 +1,5 @@
 import * as core from '@actions/core'
+import * as github from '@actions/github'
 import generateSummary, { GenerateSummaryReport } from './generate-summary'
 
 /**
@@ -80,9 +81,7 @@ export async function run(): Promise<void> {
 
     // Comment on the PR with the summary as a comment
     if (inputs.pull_request_id && inputs.token) {
-      const octokit = require('@octokit/rest')({
-        auth: inputs.token
-      })
+      const octokit = github.getOctokit(inputs.token)
 
       const summaryStatistics = summary.statistics
       const summaryFailedTests = summary.failedTests
@@ -103,9 +102,9 @@ export async function run(): Promise<void> {
           )
           .join('\n')
 
-      await octokit.issues.createComment({
-        owner,
-        repo: process.env.GITHUB_REPOSITORY?.split('/')[1],
+      await octokit.rest.issues.createComment({
+        owner: owner ?? 'Solibri',
+        repo: process.env.GITHUB_REPOSITORY?.split('/')[1] ?? 'desktop-main', // Repository name
         issue_number: parseInt(inputs.pull_request_id),
         body: comment
       })
