@@ -105,6 +105,7 @@ export default async function generateSummary(
     }
   } catch (error) {
     // Fail the workflow run if an error occurs
+    core.error(`Error occurred while generating the summary report: ${error}`)
     if (error instanceof Error) core.setFailed(error.message)
     return {
       failedTests: [],

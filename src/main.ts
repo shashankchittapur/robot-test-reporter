@@ -29,13 +29,26 @@ export async function run(): Promise<void> {
     const owner = process.env.GITHUB_REPOSITORY?.split('/')[0]
     core.debug(`owner: ${owner}`)
 
-    const summary: GenerateSummaryReport = await generateSummary(
+    const reportSummary: GenerateSummaryReport = await generateSummary(
       inputs.report_path
     )
 
+    core.info('Generating Robot report completed')
+
+    core.info(`Total tests: ${reportSummary.total}`)
+    core.info(`Passed: ${reportSummary.statistics.pass}`)
+    core.info(`Failed: ${reportSummary.statistics.fail}`)
+    core.info(`Skipped: ${reportSummary.statistics.skip}`)
+    core.info(`Pass percentage: ${reportSummary.passPercentage}`)
+    core.info(`Total execution time: ${reportSummary.totalExecutionTime}`)
+    core.info('Failed tests:')
+    reportSummary.failedTests.forEach(test => {
+      core.info(`Test: ${test.name}`)
+      core.info(`Execution time: ${test.execution_time}`)
+      core.info(`Message: ${test.message}`)
+    })
+
     await core.summary
-      .addHeading('Robot Framework Test Report')
-      .addBreak()
       .addHeading('Robot Results Summary')
       .addTable([
         [
@@ -46,19 +59,19 @@ export async function run(): Promise<void> {
           { data: 'Pass%', header: true }
         ],
         [
-          String(summary.statistics.pass),
-          String(summary.statistics.fail),
-          String(summary.statistics.skip),
+          String(reportSummary.statistics.pass),
+          String(reportSummary.statistics.fail),
+          String(reportSummary.statistics.skip),
           String(
-            summary.statistics.pass +
-              summary.statistics.fail +
-              summary.statistics.skip
+            reportSummary.statistics.pass +
+              reportSummary.statistics.fail +
+              reportSummary.statistics.skip
           ),
           (
-            (summary.statistics.pass /
-              (summary.statistics.pass +
-                summary.statistics.fail +
-                summary.statistics.skip)) *
+            (reportSummary.statistics.pass /
+              (reportSummary.statistics.pass +
+                reportSummary.statistics.fail +
+                reportSummary.statistics.skip)) *
             100
           ).toFixed(2)
         ]
@@ -68,13 +81,13 @@ export async function run(): Promise<void> {
       .addTable([
         [
           { data: 'Test Name', header: true },
-          { data: 'Execution Time :clock:', header: true },
-          { data: 'Message', header: true }
+          { data: 'Message', header: true },
+          { data: 'Execution Time :clock1:', header: true }
         ],
-        ...summary.failedTests.map(test => [
+        ...reportSummary.failedTests.map(test => [
           test.name,
-          `${test.execution_time.toFixed(2)} s`,
-          test.message
+          test.message,
+          `${test.execution_time.toFixed(2)} s`
         ])
       ])
       .write()
@@ -83,8 +96,8 @@ export async function run(): Promise<void> {
     if (inputs.pull_request_id && inputs.token) {
       const octokit = github.getOctokit(inputs.token)
 
-      const summaryStatistics = summary.statistics
-      const summaryFailedTests = summary.failedTests
+      const summaryStatistics = reportSummary.statistics
+      const summaryFailedTests = reportSummary.failedTests
 
       const comment =
         'Robot Framework Test Report\n\n' +
