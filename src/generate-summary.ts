@@ -2,7 +2,6 @@ import * as core from '@actions/core'
 import {  Statistics, Test } from './main'
 
 
-const xmlQuery = require('xml-query');
 const XmlReader = require('xml-reader');
 
 export interface GenerateSummaryReport {
@@ -18,67 +17,85 @@ export interface GenerateSummaryReport {
 export default async function generateSummary(reportPath: string): Promise<GenerateSummaryReport> {
     try {
       core.debug('Generating Robot report started')
-
-      const output = await readOutput(reportPath)
+      const fs = require('fs')
+      const path = require('path')
+      const outputFile = path.join(reportPath, 'output.xml')
+      if (!fs.existsSync(outputFile)) {
+        throw new Error('output.xml file not found in the report path')
+      }
+      console.log('Reading output.xml file started')
+      const outputFileDate = fs.readFileSync(outputFile, 'utf8')
+      console.log('Reading output.xml file completed')
       
-      const xq = xmlQuery(output)
+      const xmlReader = XmlReader.create({stream:true})
 
-      // declare failed tests and passed tests arrays
       const failedTests: Test[] = []
       const passedTests: Test[] = []
       let totalExecutionTime = 0
 
+      xmlReader.on('tag:test', (test:any) => {
+        const statusNode = test.children.find((child: any) => child.name === 'status')
+        const statusAttributes = statusNode.attributes
+        const endDateTime = convertToDate(statusAttributes.endtime);
+        const endTime = endDateTime.getTime();
+        const startDateTime = convertToDate(statusAttributes.starttime);
+        const startTime = startDateTime.getTime();
+        const testExecutionTime = (endTime - startTime) / 1000
+        const testName = test.attributes.name
+        const message = statusNode.children.filter((child: any) => child.type === 'text').map((child: any) => child.value).join('')
+        const testStatus = statusAttributes.status
+        const suiteName = test.parent.attributes.name
 
+        if (testStatus === 'PASS') {
+          passedTests.push({
+            name: testName,
+            status: testStatus,
+            execution_time: testExecutionTime,
+            message: message,
+            suite: suiteName
+          })
+        } else if (testStatus === 'FAIL') {
+          failedTests.push({
+            name: testName,
+            status: testStatus,
+            execution_time: testExecutionTime,
+            message: message,
+            suite: suiteName
+          })
+        }
+        totalExecutionTime += testExecutionTime
+      })
 
-     xq.find('test').each((test:any) => {
-      const statusAttributes = test.children.find((child: any) => child.name === 'status').attributes;
-      const status = statusAttributes.status
-      const name = test.attributes.name
-      const suite = test.parent.attributes.name
-      const endTime:Date = convertToDate(statusAttributes.endtime)
-      const startTime:Date = convertToDate(statusAttributes.starttime)
-      
-      const executionTime = (endTime.getTime() - startTime.getTime()) / 1000
-      
-      const message = statusAttributes.message
-      const test1: Test = {
-          name: name,
-          status: status,
-          suite: suite,
-          execution_time: executionTime,
-          message: message
-      }
+      let totalPass = 0
+      let totalFail = 0
+      let totalSkip = 0
+      xmlReader.on('tag:statistics', (statistics:any) => {
+        const stat = statistics.children.find((child: any) => child.name === 'total')
+                                   .children.find((child: any) => child.name === 'stat')
+        totalPass = parseInt(stat.attributes.pass)
+        totalFail = parseInt(stat.attributes.fail)
+        totalSkip = parseInt(stat.attributes.skip)
+      })
+      xmlReader.parse(outputFileDate)
 
-      if (status === 'PASS') {
-          passedTests.push(test1)
-      } else if (status === 'FAIL') {
-          failedTests.push(test1)
-      } 
-      totalExecutionTime += executionTime
-    })
-    
-      
-
-      const statisticsPath = xq.find('statistics').children().find('total').children().find('stat')
-      
       const statistics: Statistics = {
-          pass: parseInt(statisticsPath.attr('pass')),
-          fail: parseInt(statisticsPath.attr('fail')),
-          skip: parseInt(statisticsPath.attr('skip'))
+        pass: totalPass,
+        fail: totalFail,
+        skip: totalSkip
       }
 
-      const total = statistics.pass + statistics.fail
+        const total = statistics.pass + statistics.fail
 
-      const passPercentage = getPassPercentage(statistics.pass, statistics.fail)
+        const passPercentage = parseFloat(getPassPercentage(statistics.pass, statistics.fail))
 
-      return {
+        return {
           failedTests: failedTests,
           passedTests: passedTests,
           statistics: statistics,
           total: total,
           passPercentage: passPercentage,
           totalExecutionTime: totalExecutionTime
-      }
+        }
       
     } catch (error) {
       // Fail the workflow run if an error occurs
@@ -98,27 +115,22 @@ export default async function generateSummary(reportPath: string): Promise<Gener
     }
 }
 
-async function readOutput(reportPath: string) {
-  const fs = require('fs')
-  const path = require('path')
-  const outputFile = path.join(reportPath, 'output.xml')
-  if (!fs.existsSync(outputFile)) {
-    throw new Error('output.xml file not found in the report path')
-  }
-  return XmlReader.parseSync(fs.readFileSync(outputFile, 'utf8'))
-}
-
 function getPassPercentage( pass:number,  fail:number) {
   if (pass !==0 && fail === 0)
-      return 100
+      return (100).toFixed(2)
   else if (pass !== 0 && fail !== 0)
-    return (pass / (pass + fail)) * 100
-  return (pass / (pass + fail)) * 100
+    // return percentage with 2 decimal places
+    return ((pass / (pass + fail)) * 100).toFixed(2)
+  return ((pass / (pass + fail)) * 100).toFixed(2)
 }
 function convertToDate(dateTime: string) {
   const splitDateTime = dateTime.split(' ')
-  const date = splitDateTime[0]
+  const justDate = splitDateTime[0]
+  const year = justDate.substring(0, 4)
+  const month = justDate.substring(4, 6)
+  const day = justDate.substring(6, 8)
   const time = splitDateTime[1]
-  return new Date(`${date}T${time}`)
+  const dateWithISOFormat = `${year}-${month}-${day}T${time}`
+  return new Date(dateWithISOFormat)
 }
 

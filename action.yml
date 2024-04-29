@@ -17,7 +17,7 @@ inputs:
     required: true
   sha:
     description: 'The commit SHA'
-    required: true
+    required: false
     default: ${{ github.sha }}
   pull_request_id:
     description: 'The pull request number'
