@@ -82,11 +82,13 @@ export async function run(): Promise<void> {
         [
           { data: 'Test Name', header: true },
           { data: 'Message', header: true },
+          { data: 'Suite Name', header: true },
           { data: 'Execution Time :clock1:', header: true }
         ],
         ...reportSummary.failedTests.map(test => [
           test.name,
           test.message,
+          test.suite,
           `${test.execution_time.toFixed(2)} s`
         ])
       ])
@@ -106,12 +108,12 @@ export async function run(): Promise<void> {
         '| --- | --- | --- | --- | --- |\n' +
         `| ${summaryStatistics.pass} | ${summaryStatistics.fail} | ${summaryStatistics.skip} | ${summaryStatistics.pass + summaryStatistics.fail + summaryStatistics.skip} | ${((summaryStatistics.pass / (summaryStatistics.pass + summaryStatistics.fail + summaryStatistics.skip)) * 100).toFixed(2)} |\n\n` +
         'Failed Tests\n\n' +
-        '| Test Name | Execution Time | Message |\n' +
+        '| Test Name | Message | Suite | Execution Time |\n' +
         '| --- | --- | --- |\n' +
         summaryFailedTests
           .map(
             test =>
-              `| ${test.name} | ${test.execution_time} | ${test.message} |\n`
+              `| ${test.name} | ${test.message} | ${test.suite} | ${test.execution_time} |\n`
           )
           .join('')
 
