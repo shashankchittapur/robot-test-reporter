@@ -30187,13 +30187,16 @@ async function run() {
                 '| --- | --- | --- |\n' +
                 summaryFailedTests
                     .map(test => `| ${test.name} | ${test.execution_time} | ${test.message} |\n`)
-                    .join('\n');
+                    .join('');
             await octokit.rest.issues.createComment({
                 owner: owner ?? 'Solibri',
                 repo: process.env.GITHUB_REPOSITORY?.split('/')[1] ?? 'desktop-main', // Repository name
                 issue_number: parseInt(inputs.pull_request_id),
                 body: comment
             });
+        }
+        if (reportSummary.statistics.fail > 0) {
+            core.setFailed('Robot tests failed. Please check the summary for more details');
         }
     }
     catch (error) {
