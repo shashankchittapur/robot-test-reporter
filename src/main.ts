@@ -113,7 +113,7 @@ export async function run(): Promise<void> {
             test =>
               `| ${test.name} | ${test.execution_time} | ${test.message} |\n`
           )
-          .join('\n')
+          .join('')
 
       await octokit.rest.issues.createComment({
         owner: owner ?? 'Solibri',
@@ -121,6 +121,12 @@ export async function run(): Promise<void> {
         issue_number: parseInt(inputs.pull_request_id),
         body: comment
       })
+    }
+
+    if (reportSummary.statistics.fail > 0) {
+      core.setFailed(
+        'Robot tests failed. Please check the summary for more details'
+      )
     }
   } catch (error) {
     // Fail the workflow run if an error occurs
